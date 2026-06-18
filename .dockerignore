@@ -1,3 +1,4 @@
+# 业务职责：缩小本机构建 Photon 镜像时发送给 Docker 的上下文，只保留生产镜像构建需要的源码、配置和静态资源。
 .git
 node_modules
 .eslint*
@@ -5,7 +6,7 @@ node_modules
 .git*
 .vscode
 README.md
-Dockerile*
+Dockerfile*
 docker-compose.yml
 public
 .svelte-kit
