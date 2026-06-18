@@ -1,7 +1,7 @@
 <script lang="ts">
   /*
-   * 业务职责：负责 Photon 帖子信息流的虚拟列表和无限滚动体验，让大列表滚动保持流畅，同时根据 Lemmy 分页游标准确判断是否还有下一页。
-   * 使用场景：首页、社区页等帖子列表启用 infiniteScroll 与虚拟化时使用；如果后端没有返回 next_page，业务上表示当前筛选条件已经到达信息流末尾。
+   * 业务职责：负责 Photon 帖子信息流的虚拟列表和无限滚动体验，让大列表滚动保持流畅，同时避免低内容量站点在首页底部长期显示加载器。
+   * 使用场景：首页、社区页等帖子列表启用 infiniteScroll 与虚拟化时使用；只有当前页达到分页大小且 Lemmy 提供下一页游标时，业务上才继续请求更多帖子。
    */
   import { browser } from '$app/environment'
   import { client } from '$lib/api/client.svelte'
@@ -64,10 +64,21 @@
 
   let error = $state()
   let loading = $state(false)
-  let hasMore = $state(Boolean(params.page_cursor))
 
   const abortLoad = new AbortController()
   let seenIds = new SvelteSet<number>(posts.map((post) => post.post.id))
+  const feedPageLimit = $derived(params.limit ?? 20)
+
+  /*
+   * 业务职责：判断信息流是否值得继续触发无限滚动，避免 Lemmy 在短首页仍返回 page cursor 时让用户看到无意义的底部 spinner。
+   * 关键约束：只有上一页达到请求的分页大小且存在下一页游标，才代表列表很可能还有内容；少于分页大小的小站首页应直接展示结束态。
+   */
+  const canLoadAnotherPage = (
+    pagePosts: PostView[],
+    pageCursor?: GetPosts['page_cursor'],
+  ) => pagePosts.length >= feedPageLimit && Boolean(pageCursor)
+
+  let hasMore = $state(canLoadAnotherPage(posts, params.page_cursor))
 
   /*
    * 业务职责：从当前信息流中移除被用户隐藏或被操作折叠的帖子，确保前端展示状态立即响应用户的帖子级操作。
@@ -80,8 +91,8 @@
   }
 
   /*
-   * 业务职责：按 Lemmy 返回的分页游标加载下一页帖子，并用 next_page 作为是否还有更多内容的唯一业务信号。
-   * 关键约束：帖子数量少于分页大小但没有 next_page 时必须结束信息流，避免小站首页底部长期显示加载器或重复请求首屏数据。
+   * 业务职责：按 Lemmy 返回的分页游标加载下一页帖子，并在追加内容前更新本地分页状态。
+   * 关键约束：Lemmy 可能在短首页仍返回 next_page，因此必须同时参考返回帖子数量和游标，避免小站首页底部长期显示加载器或重复请求首屏数据。
    */
   async function loadMore() {
     if (!hasMore || loading) return
@@ -101,7 +112,7 @@
       error = null
 
       params.page_cursor = newPosts.next_page
-      hasMore = Boolean(newPosts.next_page)
+      hasMore = canLoadAnotherPage(newPosts.posts, newPosts.next_page)
 
       posts.push(
         ...newPosts.posts.filter((post) => {
