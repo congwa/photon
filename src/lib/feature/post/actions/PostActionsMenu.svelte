@@ -1,4 +1,8 @@
 <script lang="ts">
+  /*
+   * 业务职责：提供帖子更多操作菜单，承载编辑、隐藏、举报、删除和交叉转发等低频但关键的帖子管理动作。
+   * 使用场景：登录用户查看自己或有权限处理的帖子时使用；交叉转发表单数据结构来自 postform.svelte.ts 的运行时模块。
+   */
   import { PiefedClient } from '$lib/api/piefed/adapter'
   import type { PostView } from '$lib/api/types'
   import { profile } from '$lib/app/auth'
@@ -16,7 +20,7 @@
     Trash,
     XMark,
   } from 'svelte-hero-icons/dist'
-  import { type PostFormInit } from '../form/postform.svelte'
+  import { type PostFormInit } from '../form/postform.svelte.js'
   import { hidePost } from '../helpers'
 
   interface Props {
@@ -27,6 +31,10 @@
 
   let { post = $bindable(), onhide, editing = $bindable() }: Props = $props()
 
+  /*
+   * 业务职责：把当前帖子转换为交叉转发参数，保留标题、链接、NSFW 状态和原帖引用，便于创建新帖时预填充。
+   * 输出含义：返回 JSON 字符串，后续会作为 create post 页面的 crosspost 参数内容。
+   */
   function crosspostB64() {
     return JSON.stringify({
       body: `${

@@ -1,4 +1,8 @@
 <script lang="ts">
+  /*
+   * 业务职责：承载发帖与编辑帖子表单，统一处理普通帖、投票帖、社区扩展信息和自动填充内容的前端编辑体验。
+   * 使用场景：创建帖子、编辑帖子和交叉转发时使用；表单状态来自 postform.svelte.ts，并在 SvelteKit 构建中通过 postform.svelte.js 导入。
+   */
   import { client, site } from '$lib/api/client.svelte'
   import { PiefedClient } from '$lib/api/piefed/adapter'
   import type { PostView } from '$lib/api/types'
@@ -47,7 +51,7 @@
     Trash,
     XMark,
   } from 'svelte-hero-icons/dist'
-  import { autofillPost, PostFormState } from './postform.svelte'
+  import { autofillPost, PostFormState } from './postform.svelte.js'
 
   interface Props {
     editPost?: number
@@ -75,6 +79,10 @@
   let uploadImage = $state(false)
   let customThumbnail = $state(false)
 
+  /*
+   * 业务职责：根据用户输入的 URL 或文本自动补齐帖子标题与正文，降低转发外部内容和引用文本时的编辑成本。
+   * 输入输出：输入是 URL 或已解析标题正文；输出是最终写入表单状态的标题正文快照。
+   */
   async function autofill(
     data: URL | { title?: string; body?: string },
   ): Promise<{ title?: string; body?: string }> {

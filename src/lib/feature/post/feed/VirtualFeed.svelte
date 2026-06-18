@@ -1,4 +1,8 @@
 <script lang="ts">
+  /*
+   * 业务职责：负责 Photon 帖子信息流的虚拟列表和无限滚动体验，让大列表滚动保持流畅，同时根据 Lemmy 分页游标准确判断是否还有下一页。
+   * 使用场景：首页、社区页等帖子列表启用 infiniteScroll 与虚拟化时使用；如果后端没有返回 next_page，业务上表示当前筛选条件已经到达信息流末尾。
+   */
   import { browser } from '$app/environment'
   import { client } from '$lib/api/client.svelte'
   import type { GetPosts, PostView } from '$lib/api/types'
@@ -60,17 +64,25 @@
 
   let error = $state()
   let loading = $state(false)
-  let hasMore = $state(true)
+  let hasMore = $state(Boolean(params.page_cursor))
 
   const abortLoad = new AbortController()
   let seenIds = new SvelteSet<number>(posts.map((post) => post.post.id))
 
+  /*
+   * 业务职责：从当前信息流中移除被用户隐藏或被操作折叠的帖子，确保前端展示状态立即响应用户的帖子级操作。
+   * 输入输出：输入是 Lemmy post id；输出是更新后的本地帖子列表，不向后端提交删除或隐藏请求。
+   */
   const removePost = (postId: number) => {
     const index = posts.findIndex((post) => post.post.id === postId)
     if (index === -1) return
     posts = posts.toSpliced(index, 1)
   }
 
+  /*
+   * 业务职责：按 Lemmy 返回的分页游标加载下一页帖子，并用 next_page 作为是否还有更多内容的唯一业务信号。
+   * 关键约束：帖子数量少于分页大小但没有 next_page 时必须结束信息流，避免小站首页底部长期显示加载器或重复请求首屏数据。
+   */
   async function loadMore() {
     if (!hasMore || loading) return
 
@@ -88,9 +100,8 @@
 
       error = null
 
-      hasMore = newPosts.posts.length != 0
-
       params.page_cursor = newPosts.next_page
+      hasMore = Boolean(newPosts.next_page)
 
       posts.push(
         ...newPosts.posts.filter((post) => {

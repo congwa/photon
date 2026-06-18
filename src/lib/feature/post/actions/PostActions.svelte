@@ -1,4 +1,8 @@
 <script lang="ts">
+  /*
+   * 业务职责：提供帖子详情区的主要操作入口，包括编辑、分享、投票和调试操作，让用户围绕单个帖子完成常用交互。
+   * 使用场景：帖子卡片和详情页需要展示当前用户可执行动作时使用；编辑表单状态来自 postform.svelte.ts 的运行时模块。
+   */
   import { page } from '$app/state'
   import type { PostView } from '$lib/api/types'
   import { profile } from '$lib/app/auth'
@@ -33,7 +37,7 @@
     ShieldCheck,
   } from 'svelte-hero-icons/dist'
   import { PostVote } from '..'
-  import { PostFormState } from '../form/postform.svelte'
+  import { PostFormState } from '../form/postform.svelte.js'
   import { postLink } from '../helpers'
 
   let saving = $state(false)
@@ -59,6 +63,10 @@
   let buttonHeight = $derived(view == 'compact' ? 'h-7.5' : 'h-8')
   let buttonSquare = $derived(view == 'compact' ? 'w-7.5 h-7.5' : 'w-8 h-8')
 
+  /*
+   * 业务职责：生成当前帖子的分享链接并交给系统分享面板或剪贴板，支持站内链接和联邦全局链接两种业务语义。
+   * 输入输出：global 决定使用 ActivityPub 全局地址还是本实例地址；url 可覆盖最终分享地址。
+   */
   function share(global: boolean = true, url?: string) {
     const link =
       url ??
