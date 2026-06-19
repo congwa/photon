@@ -210,7 +210,7 @@
             },
             "verify": {
                 "title": "Verify email",
-                "description": "Check your inbox for a verification link. Once you've clicked it, press the button below.",
+                "description": "Important: the verification email is very likely to land in spam or promotions. Check your inbox first; if you do not see it, please check your spam folder. After opening the verification link, press the button below.",
                 "submit": "I've verified my email",
                 "error": "Your email has not been verified."
             }

@@ -1,3 +1,7 @@
+<!--
+业务职责：承载用户在指定实例创建账号的分步注册流程，包括填写账号资料、处理邮箱验证、提交入站申请和验证码校验。
+使用场景：用户从登录页或账号页进入注册时使用；当站点要求邮箱验证时，本页面负责把用户留在验证步骤并提示其完成邮件确认后继续。
+-->
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
@@ -63,6 +67,9 @@
 
   const instanceType: ClientType = $state({ name: 'lemmy', baseUrl: '/api/v3' })
 
+  /**
+   * 业务目的：为需要验证码的实例获取一次性挑战，确保注册请求符合站点的反滥用规则。
+   */
   const getCaptcha = async () =>
     (captcha = await getClient(instance, fetch).getCaptcha())
 
@@ -70,6 +77,9 @@
     captcha?.ok?.wav ? `data:audio/wav;base64,${captcha.ok.wav}` : '',
   )
 
+  /**
+   * 业务目的：提交用户注册资料，并根据实例注册策略引导用户进入登录、邮箱验证或管理员审核等待状态。
+   */
   async function submit() {
     clearErrorScope(page.url.pathname)
     submitting = true
@@ -119,6 +129,9 @@
     submitting = false
   }
 
+  /**
+   * 业务目的：在用户点击邮件验证链接后复查登录状态，确认账号是否已经可用或仍需等待管理员审核。
+   */
   async function verifiedEmail() {
     verifying = true
     clearErrorScope(page.url.pathname)
@@ -293,7 +306,17 @@
   {:else if stage == 'verify'}
     <div class="flex-2/3 flex flex-col h-full justify-center gap-8">
       <ErrorContainer scope={page.url.pathname} />
-      <h2 class="font-medium text-3xl">{$t('toast.verifyEmail')}</h2>
+      <div class="space-y-3">
+        <h2 class="font-medium text-3xl">{$t('form.signup.verify.title')}</h2>
+        <Material
+          rounding="2xl"
+          color="warning"
+          icon={ExclamationTriangle}
+          class="leading-relaxed"
+        >
+          {$t('form.signup.verify.description')}
+        </Material>
+      </div>
       <form
         onsubmit={(e) => {
           e.preventDefault()
