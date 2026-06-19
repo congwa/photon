@@ -8,22 +8,14 @@
   import { t } from '$lib/app/i18n'
   import { LINKED_INSTANCE_URL } from '$lib/app/instance.svelte'
   import { settings } from '$lib/app/settings.svelte'
-  import { theme } from '$lib/app/theme/theme.svelte'
   import { communityLink } from '$lib/app/util.svelte'
   import ProfileSelection from '$lib/feature/user/ProfileSelection.svelte'
-  import { Badge, Expandable, Option, Select } from 'mono-svelte'
+  import { Badge, Expandable } from 'mono-svelte'
   import {
     ArrowLeftOnRectangle,
     Bookmark,
-    ChevronUpDown,
-    Cog6Tooth,
-    ComputerDesktop,
-    Icon,
     Identification,
     Inbox,
-    Moon,
-    Sun,
-    Swatch,
     UserCircle,
     UserGroup,
   } from 'svelte-hero-icons/dist'
@@ -90,38 +82,6 @@
       icon={UserGroup}
     />
   {/if}
-  <EndPlaceholder margin="sm" size="xs">{$t('nav.menu.app')}</EndPlaceholder>
-  <SidebarButton
-    href="/settings"
-    label={$t('nav.menu.settings')}
-    icon={Cog6Tooth}
-  />
-  <Select bind:value={theme.colorScheme} size="sm">
-    {#snippet target(attachment)}
-      <SidebarButton
-        {@attach attachment}
-        label={$t('nav.menu.colorscheme.label')}
-        icon={theme.colorScheme == 'system'
-          ? ComputerDesktop
-          : theme.colorScheme == 'light'
-            ? Sun
-            : Moon}
-        class="w-full relative"
-      >
-        <Option value="system" class="hidden" icon={ComputerDesktop}>
-          {$t('nav.menu.colorscheme.system')}
-        </Option>
-        <Option value="light" class="hidden" icon={Sun}>
-          {$t('nav.menu.colorscheme.light')}
-        </Option>
-        <Option value="dark" class="hidden" icon={Moon}>
-          {$t('nav.menu.colorscheme.dark')}
-        </Option>
-        <Icon micro size="16" src={ChevronUpDown} class="ml-auto" />
-      </SidebarButton>
-    {/snippet}
-  </Select>
-  <SidebarButton href="/theme" label={$t('nav.menu.theme')} icon={Swatch} />
   {#if profile.current?.user}
     <EndPlaceholder margin="sm" size="xs">
       {$t('content.communities')}

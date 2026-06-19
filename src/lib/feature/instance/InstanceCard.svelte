@@ -1,3 +1,7 @@
+<!--
+业务职责：展示当前实例的站点摘要、实例导航、统计信息、站点说明、管理员和应用级工具入口。
+使用场景：桌面右侧信息栏默认内容，帮助用户在浏览信息流时快速理解站点状态并完成低频管理或偏好操作。
+-->
 <script lang="ts">
   import type { PersonView, SiteView, Tagline } from '$lib/api/types'
   import { t } from '$lib/app/i18n'
@@ -8,6 +12,7 @@
   import ItemList from '$lib/ui/generic/ItemList.svelte'
   import LabelStat from '$lib/ui/info/LabelStat.svelte'
   import EndPlaceholder from '$lib/ui/layout/EndPlaceholder.svelte'
+  import AppNavigation from '$lib/ui/sidebar/AppNavigation.svelte'
   import SidebarButton from '$lib/ui/sidebar/SidebarButton.svelte'
   import { Badge, Expandable, Popover } from 'mono-svelte'
   import {
@@ -166,5 +171,10 @@
         </Expandable>
       {/if}
     </div>
+
+    <EndPlaceholder size="xs" margin="sm">
+      {$t('nav.menu.app')}
+    </EndPlaceholder>
+    <AppNavigation />
   </div>
 </aside>
