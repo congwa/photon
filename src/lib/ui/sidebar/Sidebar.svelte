@@ -1,3 +1,7 @@
+<!--
+业务职责：提供桌面侧栏的账号、导航、社区分组和部署版本入口，帮助用户在主信息流之外快速切换上下文。
+使用场景：宽屏布局中作为 Photon 的持久导航栏，并在底部显示可进入更新说明页的当前版本。
+-->
 <script lang="ts">
   import { env } from '$env/dynamic/public'
   import { profile } from '$lib/app/auth'
@@ -25,8 +29,8 @@
   } from 'svelte-hero-icons/dist'
   import type { ClassValue } from 'svelte/elements'
   import ItemList from '../generic/ItemList.svelte'
-  import Logo from '../generic/Logo.svelte'
   import EndPlaceholder from '../layout/EndPlaceholder.svelte'
+  import VersionLink from '../version/VersionLink.svelte'
   import SidebarButton from './SidebarButton.svelte'
 
   interface Props {
@@ -182,12 +186,7 @@
   <footer
     class="flex gap-6 flex-col xl:flex-row text-sm text-slate-600 dark:text-zinc-300 flex-wrap"
   >
-    <div class="flex items-center gap-2">
-      <Logo width={16} />
-      <span class="font-medium">
-        {__VERSION__}
-      </span>
-    </div>
+    <VersionLink />
     {#if env.PUBLIC_XYLIGHT_MODE?.toLowerCase() == 'true'}
       <a
         class="text-blue-600 dark:text-blue-400"

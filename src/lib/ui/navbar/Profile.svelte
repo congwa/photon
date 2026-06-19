@@ -1,3 +1,7 @@
+<!--
+业务职责：提供头像菜单里的账号入口、应用设置、实例信息和部署版本入口，承载用户短路径操作。
+使用场景：顶部导航头像菜单展开时，用户可以进入个人功能、设置、主题和当前版本更新说明。
+-->
 <script lang="ts">
   import { env } from '$env/dynamic/public'
   import { site } from '$lib/api/client.svelte'
@@ -15,7 +19,6 @@
     Option,
     Select,
     Spinner,
-    toast,
   } from 'mono-svelte'
   import {
     ArrowLeftOnRectangle,
@@ -25,6 +28,7 @@
     Cog6Tooth,
     CommandLine,
     ComputerDesktop,
+    Cube,
     Icon,
     Identification,
     Inbox,
@@ -161,15 +165,16 @@
 <li class="flex flex-col px-2 py-1 mx-auto my-1 text-xs w-full">
   <div class="flex flex-row gap-2 w-full items-center">
     <div class="flex-1">
-      <button
-        class="hover:brightness-110 transition-all"
-        onclick={() => {
-          navigator?.clipboard?.writeText(__VERSION__)
-          toast({ content: $t('toast.copied') })
-        }}
+      <Button
+        href="/updates"
+        color="none"
+        size="custom"
+        class="rounded-lg p-1 hover:brightness-110 transition-all"
+        title="查看当前版本更新内容"
       >
+        <Icon src={Cube} size="16" micro />
         <Badge color="blue-subtle">{__VERSION__}</Badge>
-      </button>
+      </Button>
     </div>
     <Button
       onclick={() => {

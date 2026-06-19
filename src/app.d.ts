@@ -1,3 +1,7 @@
+/**
+ * Business responsibility: describe Photon app-wide runtime contracts and
+ * build-time deployment constants used by pages, API clients, and shell UI.
+ */
 // See https://kit.svelte.dev/docs/types#app
 
 // for information about these interfaces
@@ -25,11 +29,23 @@ declare global {
     // interface Platform {}
   }
   declare const __VERSION__: string
+  declare const __DEPLOY_COMMIT__: string
+  declare const __DEPLOY_PREVIOUS_COMMIT__: string
+  declare const __DEPLOYED_AT__: string
+  declare const __DEPLOY_NOTES__: string
 }
 
 export {}
 // eslint-disable-next-line
 declare const __VERSION__: string
+// eslint-disable-next-line
+declare const __DEPLOY_COMMIT__: string
+// eslint-disable-next-line
+declare const __DEPLOY_PREVIOUS_COMMIT__: string
+// eslint-disable-next-line
+declare const __DEPLOYED_AT__: string
+// eslint-disable-next-line
+declare const __DEPLOY_NOTES__: string
 
 declare module 'markdown-it-sub'
 declare module 'markdown-it-sup'
