@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deploy Photon CreateSci"
+  short_description: "部署维护 createsci.com 的 Photon 前端"
+  default_prompt: "Use $deploy-photon-createsci to validate, commit, and deploy the local Photon fork to createsci.com."
