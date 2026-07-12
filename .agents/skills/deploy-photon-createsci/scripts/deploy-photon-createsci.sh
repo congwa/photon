@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # 业务职责：将本地维护的 Photon fork 以可复现的 Docker 镜像发布到 createsci.com，保证生产 VPS 只运行已构建产物。
-# 使用场景：本地 Photon 修复完成并提交后，用本脚本在本机构建 linux/amd64 镜像、同步远端源码记录、加载镜像并只重启 createsci-photon 服务；远端禁止 npm/bun 安装和前端构建。
+# 使用场景：本地 Photon 修复完成并提交后，用本脚本构建 linux/amd64 镜像、流式加载到 SFO 并只重启 Photon fallback 服务；远端禁止 npm/bun 安装、源码同步和前端构建。
 
 set -euo pipefail
 
 LOCAL_REPO="${LOCAL_REPO:-/Users/wang/code/xiaoji/photon}"
-REMOTE="${REMOTE:-root@64.186.253.23}"
-REMOTE_REPO="${REMOTE_REPO:-/srv/photon}"
+REMOTE="${REMOTE:-root@108.62.160.202}"
 REMOTE_COMPOSE="${REMOTE_COMPOSE:-/srv/lemmy/compose.yaml}"
 REMOTE_SERVICE="${REMOTE_SERVICE:-photon}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-codex/createsci-production}"
@@ -29,6 +28,16 @@ require_command() {
   fi
 }
 
+# 业务职责：确认 Docker fallback 的目标是 SFO，防止把镜像或源码重新写回 dmit_4_02 线路机。
+assert_remote_sfo() {
+  ssh "$REMOTE" "set -euo pipefail
+    ip -4 -o addr show | grep -q '108.62.160.202/'
+    ip -4 -o addr show sfo-edge | grep -q '10.88.0.1/24'
+    systemctl is-active --quiet wg-quick@sfo-edge
+    systemctl is-active --quiet docker
+  "
+}
+
 # 业务职责：确保本地 Photon 仓库状态可追溯；默认拒绝未提交源码部署，避免线上镜像无法对应 Git 提交。
 assert_clean_repo() {
   local worktree_clean=0
@@ -43,7 +52,7 @@ assert_clean_repo() {
   fi
 }
 
-# 业务职责：确认本次发布来自固定生产分支，使线上 /srv/photon、GitHub 和本地维护分支保持同一条可追踪发布线。
+# 业务职责：确认本次发布来自固定生产分支，使构建镜像、Git 提交和本地维护分支保持同一条可追踪发布线。
 assert_deploy_branch() {
   local branch
   branch="$(git -C "$LOCAL_REPO" branch --show-current)"
@@ -99,56 +108,52 @@ build_local_image() {
   docker buildx build --platform "$PLATFORM" --target node -t "$IMAGE_TAG" --load "$LOCAL_REPO"
 }
 
-# 业务职责：让远端 /srv/photon 与本地已提交版本对齐，仅用于记录线上镜像对应的 Git 提交，不在 VPS 上安装依赖或构建前端。
-sync_remote_repo() {
-  local commit
-  commit="$(git -C "$LOCAL_REPO" rev-parse HEAD)"
-
-  log "Syncing remote repo to $DEPLOY_BRANCH@$commit"
-  ssh "$REMOTE" "set -euo pipefail
-    cd '$REMOTE_REPO'
-    git remote set-url origin '$(git -C "$LOCAL_REPO" remote get-url origin)'
-    git fetch origin '$DEPLOY_BRANCH'
-    git checkout -B '$DEPLOY_BRANCH' FETCH_HEAD
-    git reset --hard '$commit'
-  "
-}
-
 # 业务职责：确认生产 Compose 的 Photon 服务只消费预构建镜像，避免部署路径退回到 VPS 上执行 docker build、npm install 或 bun install。
 assert_remote_runtime_only() {
   local expected_image="${1:-}"
 
   log "Checking remote compose keeps $REMOTE_SERVICE runtime-only"
-  ssh "$REMOTE" "REMOTE_COMPOSE='$REMOTE_COMPOSE' REMOTE_SERVICE='$REMOTE_SERVICE' EXPECTED_IMAGE='$expected_image' python3 - <<'PY'
-import json
+  ssh "$REMOTE" "set -euo pipefail
+if docker compose version >/dev/null 2>&1; then
+  docker compose -f '$REMOTE_COMPOSE' config >/dev/null
+else
+  docker-compose -f '$REMOTE_COMPOSE' config >/dev/null
+fi
+REMOTE_COMPOSE='$REMOTE_COMPOSE' REMOTE_SERVICE='$REMOTE_SERVICE' EXPECTED_IMAGE='$expected_image' python3 - <<'PY'
 import os
-import subprocess
+from pathlib import Path
+import re
 
-compose = os.environ['REMOTE_COMPOSE']
+compose = Path(os.environ['REMOTE_COMPOSE'])
 service_name = os.environ['REMOTE_SERVICE']
 expected_image = os.environ.get('EXPECTED_IMAGE', '')
+lines = compose.read_text().splitlines()
+header = f'  {service_name}:'
 
-data = json.loads(
-    subprocess.check_output(
-        ['docker', 'compose', '-f', compose, 'config', '--format', 'json'],
-        text=True,
-    )
-)
-service = data.get('services', {}).get(service_name)
-if service is None:
+try:
+    start = lines.index(header)
+except ValueError:
     raise SystemExit(f'compose service not found: {service_name}')
 
-if 'build' in service:
+end = len(lines)
+for index in range(start + 1, len(lines)):
+    if re.match(r'^  [^ ].*:$', lines[index]):
+        end = index
+        break
+block = '\n'.join(lines[start:end])
+
+if re.search(r'^    build:', block, re.MULTILINE):
     raise SystemExit(f'{service_name} must use a prebuilt image; remove build: from {compose}')
 
-image = service.get('image')
-if not image:
+match = re.search(r'^    image:\s*(\S+)', block, re.MULTILINE)
+if not match:
     raise SystemExit(f'{service_name} must declare image: so the VPS only runs a prebuilt artifact')
+image = match.group(1)
 
 if expected_image and image != expected_image:
     raise SystemExit(f'{service_name} image is {image}, expected {expected_image}')
 
-command_text = ' '.join(str(service.get(key) or '') for key in ('command', 'entrypoint')).lower()
+command_text = block.lower()
 for forbidden in ('npm install', 'npm run build', 'bun install', 'bun run build', 'docker build', 'docker compose build'):
     if forbidden in command_text:
         raise SystemExit(f'{service_name} command contains forbidden remote build step: {forbidden}')
@@ -178,10 +183,14 @@ elif new not in text:
 PY"
 }
 
-# 业务职责：只重建 Photon 前端容器，保持 Lemmy、Postgres、pictrs 和 postfix 数据面稳定运行。
+# 业务职责：只重建 Photon 前端容器，保持 Lemmy、PostgreSQL 和 pictrs 数据面稳定运行。
 restart_remote_photon() {
   log "Restarting compose service $REMOTE_SERVICE"
-  ssh "$REMOTE" "docker compose -f '$REMOTE_COMPOSE' up -d --no-deps --force-recreate '$REMOTE_SERVICE'"
+  ssh "$REMOTE" "if docker compose version >/dev/null 2>&1; then
+    docker compose -f '$REMOTE_COMPOSE' up -d --no-deps --force-recreate '$REMOTE_SERVICE'
+  else
+    docker-compose -f '$REMOTE_COMPOSE' up -d --no-deps --force-recreate '$REMOTE_SERVICE'
+  fi"
 }
 
 # 业务职责：部署后验证公网入口、PWA 注销脚本、Lemmy API 和本机端口绑定，确认本次前端发布没有破坏站点基础链路。
@@ -202,10 +211,10 @@ main() {
 
   assert_deploy_branch
   assert_clean_repo
+  assert_remote_sfo
   assert_remote_runtime_only
   run_local_checks
   build_local_image
-  sync_remote_repo
   load_image_remote
   ensure_compose_uses_local_image
   assert_remote_runtime_only "$IMAGE_TAG"

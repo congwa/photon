@@ -1,25 +1,27 @@
 ---
 name: deploy-photon-createsci
-description: Deploy and maintain the user's local Photon fork for createsci.com. Use when fixing Photon UI behavior, validating the Svelte/SvelteKit app, committing Photon changes, deploying Photon without Docker through a local build artifact and systemd, replacing the upstream ghcr.io/xyphyn/photon image as a fallback, syncing /srv/photon on dmit_4_02, restarting the Photon service, verifying createsci.com after deployment, or enforcing that the VPS never runs npm/bun installs or frontend builds.
+description: Deploy and maintain the user's local Photon fork for createsci.com on the SFO private backend. Use when fixing Photon UI behavior, validating the Svelte/SvelteKit app, committing Photon changes, deploying a local build artifact through SFO systemd, using the SFO Docker fallback, restarting Photon, or verifying the dmit_4_02 OpenResty edge to SFO request path.
 ---
 
 # Deploy Photon CreateSci
 
 ## Purpose
 
-This skill handles the owned Photon fork at `/Users/wang/code/xiaoji/photon` and deploys it to `createsci.com` on `dmit_4_02` (`root@64.186.253.23`). The preferred deployment model is a local SvelteKit Node adapter build, upload of the `build/` release artifact, and `systemd` restart of the Photon frontend. The VPS is a runtime host: do not run `npm install`, `npm run build`, `bun install`, `bun run build`, `docker build`, or `docker compose build` on it. Docker image deployment remains only as a fallback path.
+This skill handles the owned Photon fork at `/Users/wang/code/xiaoji/photon` and deploys it to SFO (`root@108.62.160.202`). The preferred model is a local SvelteKit Node adapter build, upload of the `build/` release artifact, and `systemd` restart. `dmit_4_02` is only the OpenResty/TLS/WireGuard edge and must never receive Photon artifacts or source. SFO is a runtime host: do not run frontend dependency installation or builds on it. Docker image deployment remains only as a fallback path.
 
 ## Fixed Context
 
 - Local repo: `/Users/wang/code/xiaoji/photon`
 - Production branch: `codex/createsci-production`
-- Production host: `root@64.186.253.23`
-- Production source checkout: `/srv/photon`
+- Production host: SFO `root@108.62.160.202`
+- Public edge: dmit_4_02 `64.186.253.23` (OpenResty only)
+- Production release root: `/srv/photon-systemd`
 - Production compose file: `/srv/lemmy/compose.yaml`
 - Preferred production service: systemd unit `photon`
 - Legacy Docker service/container: compose service `photon`, container `createsci-photon`
-- Runtime port: container `3000` exposed only as `127.0.0.1:19080`
-- Public entry: nginx `https://createsci.com/`
+- Runtime port: `127.0.0.1:19080`
+- SFO internal entry: nginx `10.88.0.1:18080`
+- Public entry: dmit_4_02 OpenResty `https://createsci.com/`
 - Lemmy API health: `https://createsci.com/api/v3/site`
 - PWA retirement: nginx owns `https://createsci.com/service-worker.js` with `Cache-Control: no-store`
 
@@ -28,9 +30,10 @@ This skill handles the owned Photon fork at `/Users/wang/code/xiaoji/photon` and
 - Build Photon locally with the SvelteKit Node adapter and upload only the generated `build/` directory to `/srv/photon-systemd/releases/<release-id>`.
 - Run Photon directly with Node through systemd: `node /srv/photon-systemd/current/build/index.js`.
 - Keep nginx pointed at `127.0.0.1:19080`; the systemd service uses the same host and port as the former Docker container.
-- The VPS may install or reuse a prebuilt Node runtime under `/opt/node-v20.20.2-linux-x64`, but it must not run npm, bun, Vite, SvelteKit, Rollup, or Docker build commands.
+- SFO uses the preinstalled `/usr/bin/node`; fail closed if it is missing instead of downloading or building a runtime during deployment.
+- Compose operations must support SFO's current standalone `docker-compose` v1 as well as a future `docker compose` plugin.
 - Because the adapter-node output is self-contained enough for this app, the release package does not need `node_modules`; a local smoke test verified `build/` alone can return HTTP 200.
-- Lemmy, Postgres, pictrs, and postfix can remain in the existing compose stack. This no-Docker model is specifically for the Photon frontend.
+- Lemmy, PostgreSQL 18, and pictrs remain in the SFO compose stack. Postfix is not part of production; mail uses Resend SMTP.
 
 ## Remote Build Ban
 
@@ -38,7 +41,7 @@ This skill handles the owned Photon fork at `/Users/wang/code/xiaoji/photon` and
 - The production server may run only Git metadata sync, prebuilt Node runtime installation, release artifact unpacking, systemd restart, optional legacy Photon container stop, and verification commands.
 - Do not use the VPS as a fallback builder. If local Docker or CI is unavailable, stop and report the blocker instead of running npm, bun, Vite, SvelteKit, or Docker build commands over SSH.
 - If using the fallback Docker route, the Photon compose service must use `image: createsci-photon:createsci-current` or another prebuilt image tag and must not contain `build:`.
-- `/srv/photon` exists only to record which committed source corresponds to the running release or image. It does not need `node_modules`, `.svelte-kit`, or build output.
+- Do not create a source checkout on SFO. Release metadata (`COMMIT`, version, time, notes) lives beside the uploaded immutable build.
 
 ## Workflow
 
@@ -72,7 +75,7 @@ This skill handles the owned Photon fork at `/Users/wang/code/xiaoji/photon` and
 
 6. Docker fallback deploy.
    - Use `scripts/deploy-photon-createsci.sh` only if systemd deployment is temporarily unsuitable.
-   - The fallback script builds the `linux/amd64` image locally, streams it to the VPS, ensures `/srv/photon` has the same commit on the same branch, switches compose away from upstream `ghcr.io/xyphyn/photon:latest`, re-checks that compose is image-only, and force-recreates only the Photon service.
+   - The fallback script builds the `linux/amd64` image locally, streams it to SFO, keeps compose image-only, and force-recreates only the Photon service. It does not copy the source repository to SFO.
 
 7. Verify production.
    - `curl -I https://createsci.com/` should return 200 HTML from Photon.
@@ -80,11 +83,11 @@ This skill handles the owned Photon fork at `/Users/wang/code/xiaoji/photon` and
    - `curl -s https://createsci.com/api/v3/site` should return Lemmy site data.
    - For systemd deployment, confirm `systemctl status photon` is active and `curl http://127.0.0.1:19080/` succeeds on the VPS.
    - For Docker fallback, confirm `docker ps` shows `createsci-photon` healthy/running and bound only to `127.0.0.1:19080`.
-   - If nginx returns 502 while `curl http://127.0.0.1:19080/` succeeds on the VPS, check `/var/log/nginx/createsci.com.error.log` for `upstream sent too big header`; Photon SSR can emit large modulepreload `Link` headers and needs larger proxy header buffers in the site config.
+   - If public nginx returns 502 while SFO loopback succeeds, check SFO nginx plus dmit_4_02 `/var/log/openresty/createsci.com.error.log`; Photon SSR can emit large modulepreload `Link` headers and needs larger proxy header buffers.
    - If the bug is visual, use browser or Playwright verification after deployment.
 
 8. Update knowledge base when deployment facts change.
-   - Update `/Users/wang/code/xiaoji/vps/ops/dmit-4-02/deployment.md` when image source, compose behavior, validation time, or rollback procedure changes.
+   - Update `/Users/wang/code/xiaoji/vps/ops/sfo/deployment.md` for application/runtime changes and `/Users/wang/code/xiaoji/vps/ops/dmit-4-02/deployment.md` only for edge changes.
    - Keep sensitive values out of docs and final replies.
 
 ## Script
@@ -106,8 +109,7 @@ Useful environment overrides:
 ```bash
 LOCAL_REPO=/Users/wang/code/xiaoji/photon \
 DEPLOY_BRANCH=codex/createsci-production \
-REMOTE=root@64.186.253.23 \
-REMOTE_REPO=/srv/photon \
+REMOTE=root@108.62.160.202 \
 REMOTE_COMPOSE=/srv/lemmy/compose.yaml \
 IMAGE_TAG=createsci-photon:createsci-current \
 /Users/wang/code/xiaoji/photon/.agents/skills/deploy-photon-createsci/scripts/deploy-photon-createsci.sh
@@ -121,7 +123,7 @@ Fast rollback options:
 
 - Re-run the script from the previous Git commit and image tag if that commit is still available locally.
 - For systemd, repoint `/srv/photon-systemd/current` to a previous release directory and restart `systemctl restart photon`.
-- Or disable the systemd unit, remove the disabled profile from `/srv/lemmy/compose.yaml` photon service, and run `docker compose -f /srv/lemmy/compose.yaml up -d --no-deps --force-recreate photon`.
+- Or on SFO disable the systemd unit, remove the disabled profile from `/srv/lemmy/compose.yaml` photon service, and run `docker compose -f /srv/lemmy/compose.yaml up -d --no-deps --force-recreate photon`.
 - Or edit `/srv/lemmy/compose.yaml` photon service back to `image: ghcr.io/xyphyn/photon:latest`, then run `docker compose -f /srv/lemmy/compose.yaml up -d --no-deps --force-recreate photon`.
 
 After rollback, verify homepage, Lemmy API, `/service-worker.js`, and `127.0.0.1:19080` binding again.

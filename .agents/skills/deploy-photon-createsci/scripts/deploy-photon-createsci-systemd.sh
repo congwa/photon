@@ -5,14 +5,12 @@
 set -euo pipefail
 
 LOCAL_REPO="${LOCAL_REPO:-/Users/wang/code/xiaoji/photon}"
-REMOTE="${REMOTE:-root@64.186.253.23}"
+REMOTE="${REMOTE:-root@108.62.160.202}"
 REMOTE_APP_DIR="${REMOTE_APP_DIR:-/srv/photon-systemd}"
 REMOTE_RELEASES_DIR="${REMOTE_RELEASES_DIR:-$REMOTE_APP_DIR/releases}"
 REMOTE_CURRENT_LINK="${REMOTE_CURRENT_LINK:-$REMOTE_APP_DIR/current}"
 REMOTE_SERVICE_NAME="${REMOTE_SERVICE_NAME:-photon}"
-REMOTE_NODE_VERSION="${REMOTE_NODE_VERSION:-20.20.2}"
-REMOTE_NODE_DIR="${REMOTE_NODE_DIR:-/opt/node-v${REMOTE_NODE_VERSION}-linux-x64}"
-REMOTE_NODE_BIN="${REMOTE_NODE_BIN:-$REMOTE_NODE_DIR/bin/node}"
+REMOTE_NODE_BIN="${REMOTE_NODE_BIN:-/usr/bin/node}"
 REMOTE_COMPOSE="${REMOTE_COMPOSE:-/srv/lemmy/compose.yaml}"
 REMOTE_DOCKER_SERVICE="${REMOTE_DOCKER_SERVICE:-photon}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-codex/createsci-production}"
@@ -45,6 +43,16 @@ require_command() {
     printf 'Missing required command: %s\n' "$name" >&2
     exit 1
   fi
+}
+
+# 业务职责：在任何发布读取或写入前确认目标确实是 SFO，防止覆盖已网关化的 dmit_4_02。
+assert_remote_sfo() {
+  ssh "$REMOTE" "set -euo pipefail
+    ip -4 -o addr show | grep -q '108.62.160.202/'
+    ip -4 -o addr show sfo-edge | grep -q '10.88.0.1/24'
+    systemctl is-active --quiet wg-quick@sfo-edge
+    systemctl is-active --quiet nginx
+  "
 }
 
 # 业务职责：确保发布来源是固定生产分支，使 systemd release、Git 提交和线上行为保持同一条可追溯发布线。
@@ -189,19 +197,11 @@ build_local_release() {
   fi
 }
 
-# 业务职责：确保生产机具备 Node 运行时；只安装官方预编译 Node 二进制，不在 VPS 上运行 npm install 或任何前端构建。
+# 业务职责：确认 SFO 已具备基线 Node 运行时；缺失时停止，不在发布流程中下载或构建运行时。
 ensure_remote_node_runtime() {
-  log "Ensuring remote Node runtime $REMOTE_NODE_VERSION"
+  log "Checking SFO Node runtime $REMOTE_NODE_BIN"
   ssh "$REMOTE" "set -euo pipefail
-    if [[ ! -x '$REMOTE_NODE_BIN' ]]; then
-      command -v curl >/dev/null
-      command -v tar >/dev/null
-      mkdir -p /opt
-      tmp_dir=\"\$(mktemp -d)\"
-      curl -fsSL 'https://nodejs.org/dist/v$REMOTE_NODE_VERSION/node-v$REMOTE_NODE_VERSION-linux-x64.tar.xz' -o \"\$tmp_dir/node.tar.xz\"
-      tar -xJf \"\$tmp_dir/node.tar.xz\" -C /opt
-      rm -rf \"\$tmp_dir\"
-    fi
+    test -x '$REMOTE_NODE_BIN'
     '$REMOTE_NODE_BIN' --version
   "
 }
@@ -277,8 +277,13 @@ disable_docker_photon() {
   log "Stopping old Docker Photon service if it exists"
   ssh "$REMOTE" "set -euo pipefail
     if command -v docker >/dev/null 2>&1 && [[ -f '$REMOTE_COMPOSE' ]]; then
-      docker compose -f '$REMOTE_COMPOSE' stop '$REMOTE_DOCKER_SERVICE' || true
-      docker compose -f '$REMOTE_COMPOSE' rm -f '$REMOTE_DOCKER_SERVICE' || true
+      if docker compose version >/dev/null 2>&1; then
+        docker compose -f '$REMOTE_COMPOSE' stop '$REMOTE_DOCKER_SERVICE' || true
+        docker compose -f '$REMOTE_COMPOSE' rm -f '$REMOTE_DOCKER_SERVICE' || true
+      else
+        docker-compose -f '$REMOTE_COMPOSE' stop '$REMOTE_DOCKER_SERVICE' || true
+        docker-compose -f '$REMOTE_COMPOSE' rm -f '$REMOTE_DOCKER_SERVICE' || true
+      fi
     fi
   "
 
@@ -291,6 +296,7 @@ disable_docker_photon() {
 from datetime import datetime, timezone
 from pathlib import Path
 import os
+import shutil
 import subprocess
 
 compose = Path(os.environ['REMOTE_COMPOSE'])
@@ -318,7 +324,11 @@ if 'profiles:' not in block:
     lines[start + 1:start + 1] = profile_lines
     compose.write_text(''.join(lines))
 
-subprocess.check_call(['docker', 'compose', '-f', str(compose), 'config'], stdout=subprocess.DEVNULL)
+if shutil.which('docker-compose'):
+    command = ['docker-compose', '-f', str(compose), 'config']
+else:
+    command = ['docker', 'compose', '-f', str(compose), 'config']
+subprocess.check_call(command, stdout=subprocess.DEVNULL)
 PY"
 }
 
@@ -348,6 +358,7 @@ main() {
 
   assert_deploy_branch
   assert_clean_repo
+  assert_remote_sfo
   resolve_deploy_metadata
   run_local_checks
   build_local_release
