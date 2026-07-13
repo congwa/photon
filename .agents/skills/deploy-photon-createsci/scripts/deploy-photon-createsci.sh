@@ -28,7 +28,7 @@ require_command() {
   fi
 }
 
-# 业务职责：确认 Docker fallback 的目标是 SFO，防止把镜像或源码重新写回 dmit_4_02 线路机。
+# 业务职责：确认 Docker fallback 的目标是 SFO，防止把镜像或源码写入唯一公网网关 aiyunus。
 assert_remote_sfo() {
   ssh "$REMOTE" "set -euo pipefail
     ip -4 -o addr show | grep -q '108.62.160.202/'

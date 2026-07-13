@@ -1,27 +1,27 @@
 ---
 name: deploy-photon-createsci
-description: Deploy and maintain the user's local Photon fork for createsci.com on the SFO private backend. Use when fixing Photon UI behavior, validating the Svelte/SvelteKit app, committing Photon changes, deploying a local build artifact through SFO systemd, using the SFO Docker fallback, restarting Photon, or verifying the dmit_4_02 OpenResty edge to SFO request path.
+description: Deploy and maintain the user's local Photon fork for createsci.com on the SFO private backend. Use when fixing Photon UI behavior, validating the Svelte/SvelteKit app, committing Photon changes, deploying a local build artifact through SFO systemd, using the SFO Docker fallback, restarting Photon, or verifying the aiyunus OpenResty edge to SFO request path.
 ---
 
 # Deploy Photon CreateSci
 
 ## Purpose
 
-This skill handles the owned Photon fork at `/Users/wang/code/xiaoji/photon` and deploys it to SFO (`root@108.62.160.202`). The preferred model is a local SvelteKit Node adapter build, upload of the `build/` release artifact, and `systemd` restart. `dmit_4_02` is only the OpenResty/TLS/WireGuard edge and must never receive Photon artifacts or source. SFO is a runtime host: do not run frontend dependency installation or builds on it. Docker image deployment remains only as a fallback path.
+This skill handles the owned Photon fork at `/Users/wang/code/xiaoji/photon` and deploys it to SFO (`root@108.62.160.202`). The preferred model is a local SvelteKit Node adapter build, upload of the `build/` release artifact, and `systemd` restart. aiyunus is the sole OpenResty/TLS/WireGuard edge and must never receive Photon artifacts or source. SFO is a runtime host: do not run frontend dependency installation or builds on it. Docker image deployment remains only as a fallback path.
 
 ## Fixed Context
 
 - Local repo: `/Users/wang/code/xiaoji/photon`
 - Production branch: `codex/createsci-production`
 - Production host: SFO `root@108.62.160.202`
-- Public edge: dmit_4_02 `64.186.253.23` (OpenResty only)
+- Public edge: aiyunus `38.134.56.203` / `10.88.0.11` (OpenResty only; no standby)
 - Production release root: `/srv/photon-systemd`
 - Production compose file: `/srv/lemmy/compose.yaml`
 - Preferred production service: systemd unit `photon`
 - Legacy Docker service/container: compose service `photon`, container `createsci-photon`
 - Runtime port: `127.0.0.1:19080`
 - SFO internal entry: nginx `10.88.0.1:18080`
-- Public entry: dmit_4_02 OpenResty `https://createsci.com/`
+- Public entry: aiyunus OpenResty `https://createsci.com/`
 - Lemmy API health: `https://createsci.com/api/v3/site`
 - PWA retirement: nginx owns `https://createsci.com/service-worker.js` with `Cache-Control: no-store`
 
@@ -83,11 +83,11 @@ This skill handles the owned Photon fork at `/Users/wang/code/xiaoji/photon` and
    - `curl -s https://createsci.com/api/v3/site` should return Lemmy site data.
    - For systemd deployment, confirm `systemctl status photon` is active and `curl http://127.0.0.1:19080/` succeeds on the VPS.
    - For Docker fallback, confirm `docker ps` shows `createsci-photon` healthy/running and bound only to `127.0.0.1:19080`.
-   - If public nginx returns 502 while SFO loopback succeeds, check SFO nginx plus dmit_4_02 `/var/log/openresty/createsci.com.error.log`; Photon SSR can emit large modulepreload `Link` headers and needs larger proxy header buffers.
+   - If public OpenResty returns 502 while SFO loopback succeeds, check SFO nginx plus aiyunus `/var/log/openresty/createsci.com.error.log`; Photon SSR can emit large modulepreload `Link` headers and needs larger proxy header buffers.
    - If the bug is visual, use browser or Playwright verification after deployment.
 
 8. Update knowledge base when deployment facts change.
-   - Update `/Users/wang/code/xiaoji/vps/ops/sfo/deployment.md` for application/runtime changes and `/Users/wang/code/xiaoji/vps/ops/dmit-4-02/deployment.md` only for edge changes.
+   - Update `/Users/wang/code/xiaoji/vps/ops/sfo/deployment.md` for application/runtime changes and `/Users/wang/code/xiaoji/vps/ops/aiyunus/deployment.md` only for edge changes. `dmit_4_02` was retired on 2026-07-13 and must not be used as a deployment target.
    - Keep sensitive values out of docs and final replies.
 
 ## Script
